@@ -32,12 +32,47 @@ public class Router {
     int n = rn.nextInt(1000) + 5000;
 
     try {
-      // open a socket
+      // open a server socket
       server = new ServerSocket(n);
       System.out.println("Real IP " + server.getLocalSocketAddress() + " real port: " + server.getLocalPort());
 
       rd.processIPAddress = server.getLocalSocketAddress().toString();
       rd.processPortNumber = (short)server.getLocalPort();
+
+      new Thread(new Runnable() {
+        public void run() {
+          serverIsRunning = true;
+
+          try {
+            while(true) {
+              // listen for and accept connections from clients
+              Socket serviceSocket = server.accept();
+
+              // Check for an available port
+              short portIndex = -1;
+              for (short i = 0; i < 4; i++) {
+                if (ports[i] == null) {
+                  portIndex = i;
+                  break;
+                }
+              }
+
+              if (portIndex == -1) {
+                System.out.println("No more ports available.");
+                continue;
+              }
+
+              // Add link server-null - null will be filled upon connection
+              Router.ports[portIndex] = new Link(rd, null, (short)1);
+
+              // span thread
+              new Thread(new ClientHandler(serviceSocket, Router.ports[portIndex])).start();
+            }
+          } catch (IOException e) {
+            System.out.println(e);
+          }
+        }
+      }).start();
     } catch (IOException e) {
       System.out.println(e);
     }
@@ -73,7 +108,6 @@ public class Router {
    */
   private void processAttach(String processIP, short processPort,
                              String simulatedIP, short weight) {
-
     boolean alreadyAttached = false;
 
     // Check for an available port
@@ -101,69 +135,29 @@ public class Router {
     remote.processIPAddress = processIP;
     remote.processPortNumber = processPort;
     remote.simulatedIPAddress = simulatedIP;
+    remote.status = RouterStatus.INIT;
 
     // Add new link between current router/remote router with weight
     ports[portIndex] = new Link(rd, remote, weight);
-    Link link = ports[portIndex];
-
-    // remote is the server
-    // this is the client
-    // span a client socket over remote
-    Socket clientSocket;
-    try {
-      clientSocket = new Socket(remote.processIPAddress, remote.processPortNumber);
-
-      new Thread(new ServerHandler(clientSocket, rd, portIndex)).start();
-
-    } catch (IOException e) {
-      System.out.println(e);
-    }
   }
 
   /**
    * broadcast Hello to neighbors
    */
   private void processStart() {
-    if (serverIsRunning) {
-      System.out.println("A server is already running.");
-      return;
-    }
+    for (Link link: ports) {
+      if (link == null) continue;
 
-    new Thread(new Runnable() {
-      public void run() {
-        serverIsRunning = true;
+      Socket clientSocket;
+      try {
+        clientSocket = new Socket(link.router2.processIPAddress,link.router2.processPortNumber);
 
-        try {
-          while(true) {
-            // listen for and accept connections from clients
-            Socket serviceSocket = server.accept();
+        new Thread(new ServerHandler(clientSocket, link)).start();
 
-            // Check for an available port
-            short portIndex = -1;
-            for (short i = 0; i < 4; i++) {
-              if (ports[i] == null) {
-                portIndex = i;
-                break;
-              }
-            }
-
-            if (portIndex == -1) {
-              System.out.println("No more ports available.");
-              continue;
-            }
-
-            RouterDescription tmpRemote = new RouterDescription();
-            tmpRemote.status = RouterStatus.INIT;
-            Router.ports[portIndex] = new Link(rd, tmpRemote, (short)1);
-
-            // span thread
-            new Thread(new ClientHandler(serviceSocket, rd, portIndex)).start();
-          }
-        } catch (IOException e) {
-          System.out.println(e);
-        }
+      } catch (IOException e) {
+        System.out.println(e);
       }
-    }).start();
+    }
   }
 
   /**

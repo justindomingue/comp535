@@ -13,63 +13,54 @@ import java.net.Socket;
 public class ClientHandler implements Runnable {
 
     private Socket serviceSocket;
-    private RouterDescription rd;
-    private short portNumber;
+    private Link link;
 
-    public ClientHandler(Socket serviceSocket, RouterDescription rd, short portNubmer) {
+    public ClientHandler(Socket serviceSocket, Link link) {
         this.serviceSocket = serviceSocket;
-        this.rd = rd;
-        this.portNumber = portNubmer;
+        this.link = link;
     }
 
     public void run() {
-        Router.ports[portNumber] = null;
-
         try {
-            // create output stream
             ObjectOutputStream output = new ObjectOutputStream(serviceSocket.getOutputStream());
-
-            // create input stream
             ObjectInputStream input = new ObjectInputStream(serviceSocket.getInputStream());
 
-            // now write to the output stream
-            SOSPFPacket answerPacket = new SOSPFPacket();
-            answerPacket.srcIP = rd.simulatedIPAddress;
-            answerPacket.srcProcessIP = rd.processIPAddress;
-            answerPacket.srcProcessPort = rd.processPortNumber;
-            answerPacket.dstIP = serviceSocket.getRemoteSocketAddress().toString();
-            answerPacket.sospfType = 0;
-            answerPacket.routerID = rd.simulatedIPAddress;
-            answerPacket.neighborID = rd.simulatedIPAddress;
+            RouterDescription rd = link.router1;
 
-
-            output.writeObject(answerPacket);
-
-            // read until receive acknowledgment
             SOSPFPacket responsePacket;
-
             while (true) {
-                responsePacket = (SOSPFPacket) input.readObject();
+                responsePacket = (SOSPFPacket)input.readObject();
 
-                // if HELLO
                 if (responsePacket.sospfType == 0) {
+                    // first hello
+                    if (link.router2 == null) {
+                        RouterDescription remote = new RouterDescription();
+                        remote.processIPAddress = responsePacket.srcProcessIP;
+                        remote.processPortNumber = responsePacket.srcProcessPort;
+                        remote.simulatedIPAddress = responsePacket.srcIP;
+                        remote.status = RouterStatus.INIT;
+                        link.router2 = remote;
 
-                    RouterDescription remoteRouter = new RouterDescription();
-                    remoteRouter.simulatedIPAddress = responsePacket.srcIP;
-                    remoteRouter.processIPAddress = responsePacket.srcProcessIP;
-                    remoteRouter.processPortNumber = responsePacket.srcProcessPort;
-                    remoteRouter.status = RouterStatus.TWO_WAY;
+                        // Answer with HELLO
+                        SOSPFPacket answerPacket = new SOSPFPacket();
 
-                    // Add link to local ports
-                    Link link = new Link(rd, remoteRouter, (short) 1);
-                    Router.ports[portNumber] = link;
+                        answerPacket.srcIP = rd.simulatedIPAddress;
+                        answerPacket.srcProcessIP = rd.processIPAddress;
+                        answerPacket.srcProcessPort = rd.processPortNumber;
+                        answerPacket.dstIP = serviceSocket.getRemoteSocketAddress().toString();
+                        answerPacket.sospfType = 0;
+                        answerPacket.routerID = rd.simulatedIPAddress;
+                        answerPacket.neighborID = rd.simulatedIPAddress;
 
-                    // Acknowledge
+                        output.writeObject(answerPacket);
+
+                        // second hello
+                    } else {
+                        link.router2.status = RouterStatus.TWO_WAY;
+                    }
+
                     System.out.println("received HELLO from " + link.router2.simulatedIPAddress + ";");
                     System.out.println("set " + link.router2.simulatedIPAddress + " state to " + link.router2.status + ";");
-
-                    // Answer with HELLO
-                    output.writeObject(answerPacket);
                 }
             }
         } catch (IOException e) {

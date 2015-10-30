@@ -12,61 +12,54 @@ import java.net.Socket;
  */
 public class ServerHandler implements Runnable {
     private Socket clientSocket;
-    private RouterDescription rd;
-    private short portNumber;
+    private Link link;
 
-    public ServerHandler(Socket clientSocket, RouterDescription rd, short portNubmer) {
+    public ServerHandler(Socket clientSocket, Link link) {
         this.clientSocket = clientSocket;
-        this.rd = rd;
-        this.portNumber = portNubmer;
+        this.link = link;
     }
 
     public void run() {
-        Link link = Router.ports[portNumber];
+        RouterDescription rd = link.router1;
+
         try {
-        // create output stream
-        ObjectOutputStream output = new ObjectOutputStream(clientSocket.getOutputStream());
+            ObjectOutputStream output = new ObjectOutputStream(clientSocket.getOutputStream());
+            ObjectInputStream input = new ObjectInputStream(clientSocket.getInputStream());
 
-        // create input stream
-        ObjectInputStream input = new ObjectInputStream(clientSocket.getInputStream());
+            // Send first HELLO
+            SOSPFPacket answerPacket = new SOSPFPacket();
+            answerPacket.srcIP = rd.simulatedIPAddress;
+            answerPacket.srcProcessIP = rd.processIPAddress;
+            answerPacket.srcProcessPort = rd.processPortNumber;
+            answerPacket.dstIP = clientSocket.getRemoteSocketAddress().toString();
+            answerPacket.sospfType = 0;
+            answerPacket.routerID = rd.simulatedIPAddress;
+            answerPacket.neighborID = rd.simulatedIPAddress;
 
+            output.writeObject(answerPacket);
 
-        SOSPFPacket responsePacket;
-        while (true) {
-            responsePacket = (SOSPFPacket)input.readObject();
+            SOSPFPacket responsePacket;
 
-            if (responsePacket.sospfType == 0) {
-                // first hello
-                if (link.router2.status == null) {
-                    link.router2.status = RouterStatus.INIT;
+            while (true) {
+                // Wait for answer
+                responsePacket = (SOSPFPacket) input.readObject();
+
+                // if HELLO
+                if (responsePacket.sospfType == 0) {
+                    link.router2.status = RouterStatus.TWO_WAY;
+
+                    // Acknowledge
+                    System.out.println("received HELLO from " + link.router2.simulatedIPAddress + ";");
+                    System.out.println("set " + link.router2.simulatedIPAddress + " state to " + link.router2.status + ";");
 
                     // Answer with HELLO
-                    SOSPFPacket answerPacket = new SOSPFPacket();
-
-                    answerPacket.srcIP = rd.simulatedIPAddress;
-                    answerPacket.srcProcessIP = rd.processIPAddress;
-                    answerPacket.srcProcessPort = rd.processPortNumber;
-                    answerPacket.dstIP = clientSocket.getRemoteSocketAddress().toString();
-                    answerPacket.sospfType = 0;
-                    answerPacket.routerID = rd.simulatedIPAddress;
-                    answerPacket.neighborID = rd.simulatedIPAddress;
-
                     output.writeObject(answerPacket);
-
-                // second hello
-                } else {
-                    link.router2.status = RouterStatus.TWO_WAY;
                 }
-
-                // Send HELLO
-                System.out.println("received HELLO from " + link.router2.simulatedIPAddress + ";");
-                System.out.println("set " + link.router2.simulatedIPAddress + " state to " + link.router2.status + ";");
             }
+        } catch (IOException e) {
+            System.out.println(e);
+        } catch (ClassNotFoundException e) {
+            System.out.println(e);
         }
-    } catch (IOException e) {
-        System.out.println(e);
-    } catch (ClassNotFoundException e) {
-        System.out.println(e);
-    }
     }
 }
