@@ -11,227 +11,236 @@ import java.util.Random;
 
 public class Router {
 
-  protected LinkStateDatabase lsd;
+    protected LinkStateDatabase lsd;
 
-  RouterDescription rd = new RouterDescription();
+    RouterDescription rd = new RouterDescription();
 
-  //assuming that all routers are with 4 ports
-  static Link[] ports = new Link[4];
+    //assuming that all routers are with 4 ports
+    static Link[] ports = new Link[4];
 
-  private ServerSocket server;
-  private boolean serverIsRunning = false;
+    // Client will set to true when it receives an LSAUPDATE
+    // Server monitors this variable and broadcasts the update when it changes to true
+    static boolean doSendUpdate = false;
+    private int numServers = 0;
 
-  public Router(Configuration config) {
-    rd.simulatedIPAddress = config.getString("socs.network.router.ip");
-    lsd = new LinkStateDatabase(rd);
+    private ServerSocket server;
+    private boolean serverIsRunning = false;
 
-    System.out.println("Initialized router with IP " + rd.simulatedIPAddress);
+    public Router(Configuration config) {
+        rd.simulatedIPAddress = config.getString("socs.network.router.ip");
+        lsd = new LinkStateDatabase(rd);
 
-    //todo tmp
-    Random rn = new Random();
-    int n = rn.nextInt(1000) + 5000;
+        System.out.println("Initialized router with IP " + rd.simulatedIPAddress);
 
-    try {
-      // open a server socket
-      server = new ServerSocket(n);
-      System.out.println("Real IP " + server.getLocalSocketAddress() + " real port: " + server.getLocalPort());
+        //todo tmp
+        Random rn = new Random();
+        int n = rn.nextInt(1000) + 5000;
 
-      rd.processIPAddress = server.getLocalSocketAddress().toString();
-      rd.processPortNumber = (short)server.getLocalPort();
+        try {
+            // open a server socket
+            server = new ServerSocket(n);
+            System.out.println("Real IP " + server.getLocalSocketAddress() + " real port: " + server.getLocalPort());
 
-      new Thread(new Runnable() {
-        public void run() {
-          serverIsRunning = true;
+            rd.processIPAddress = server.getLocalSocketAddress().toString();
+            rd.processPortNumber = (short)server.getLocalPort();
 
-          try {
-            while(true) {
-              // listen for and accept connections from clients
-              Socket serviceSocket = server.accept();
+            new Thread(new Runnable() {
+                public void run() {
+                    serverIsRunning = true;
 
-              // Check for an available port
-              short portIndex = -1;
-              for (short i = 0; i < 4; i++) {
-                if (ports[i] == null) {
-                  portIndex = i;
-                  break;
+                    try {
+                        while(true) {
+                            // listen for and accept connections from clients
+                            Socket serviceSocket = server.accept();
+
+                            // Check for an available port
+                            short portIndex = -1;
+                            for (short i = 0; i < 4; i++) {
+                                if (ports[i] == null) {
+                                    portIndex = i;
+                                    break;
+                                }
+                            }
+
+                            if (portIndex == -1) {
+                                System.out.println("No more ports available.");
+                                continue;
+                            }
+
+                            // Add link server-null - null will be filled upon connection
+                            Router.ports[portIndex] = new Link(rd, null, (short)1);
+
+                            // span thread
+                            new Thread(new ClientHandler(serviceSocket, Router.ports[portIndex])).start();
+                        }
+                    } catch (IOException e) {
+                        System.out.println(e);
+                    }
                 }
-              }
-
-              if (portIndex == -1) {
-                System.out.println("No more ports available.");
-                continue;
-              }
-
-              // Add link server-null - null will be filled upon connection
-              Router.ports[portIndex] = new Link(rd, null, (short)1);
-
-              // span thread
-              new Thread(new ClientHandler(serviceSocket, Router.ports[portIndex])).start();
-            }
-          } catch (IOException e) {
+            }).start();
+        } catch (IOException e) {
             System.out.println(e);
-          }
         }
-      }).start();
-    } catch (IOException e) {
-      System.out.println(e);
-    }
-  }
-
-  /**
-   * output the shortest path to the given destination ip
-   * <p/>
-   * format: source ip address  -> ip address -> ... -> destination ip
-   *
-   * @param destinationIP the ip adderss of the destination simulated router
-   */
-  private void processDetect(String destinationIP) {
-
-  }
-
-  /**
-   * disconnect with the router identified by the given destination ip address
-   * Notice: this command should trigger the synchronization of database
-   *
-   * @param portNumber the port number which the link attaches at
-   */
-  private void processDisconnect(short portNumber) {
-
-  }
-
-  /**
-   * attach the link to the remote router, which is identified by the given simulated ip;
-   * to establish the connection via socket, you need to identify the process IP and process Port;
-   * additionally, weight is the cost to transmitting data through the link
-   * <p/>
-   * NOTE: this command should not trigger link database synchronization
-   */
-  private void processAttach(String processIP, short processPort,
-                             String simulatedIP, short weight) {
-    boolean alreadyAttached = false;
-
-    // Check for an available port
-    short portIndex = -1;
-    for (short i = 0; i < 4; i++)
-    {
-      if (ports[i] == null) {
-        portIndex = i;
-      } else if (ports[i].router2.simulatedIPAddress.equals(simulatedIP)) {
-        alreadyAttached = true;
-      }
     }
 
-    if (alreadyAttached) {
-      System.out.println("Already attached.");
-      return;
+    /**
+     * output the shortest path to the given destination ip
+     * <p/>
+     * format: source ip address  -> ip address -> ... -> destination ip
+     *
+     * @param destinationIP the ip adderss of the destination simulated router
+     */
+    private void processDetect(String destinationIP) {
+
     }
-    if (portIndex == -1) {
-      System.out.println("No more ports available.");
-      return;
+
+    /**
+     * disconnect with the router identified by the given destination ip address
+     * Notice: this command should trigger the synchronization of database
+     *
+     * @param portNumber the port number which the link attaches at
+     */
+    private void processDisconnect(short portNumber) {
+
     }
 
-    // Create router description for remote router
-    RouterDescription remote = new RouterDescription();
-    remote.processIPAddress = processIP;
-    remote.processPortNumber = processPort;
-    remote.simulatedIPAddress = simulatedIP;
-    remote.status = RouterStatus.INIT;
+    /**
+     * attach the link to the remote router, which is identified by the given simulated ip;
+     * to establish the connection via socket, you need to identify the process IP and process Port;
+     * additionally, weight is the cost to transmitting data through the link
+     * <p/>
+     * NOTE: this command should not trigger link database synchronization
+     */
+    private void processAttach(String processIP, short processPort,
+                               String simulatedIP, short weight) {
+        boolean alreadyAttached = false;
 
-    // Add new link between current router/remote router with weight
-    ports[portIndex] = new Link(rd, remote, weight);
-  }
-
-  /**
-   * broadcast Hello to neighbors
-   */
-  private void processStart() {
-    for (Link link: ports) {
-      if (link == null) continue;
-
-      Socket clientSocket;
-      try {
-        clientSocket = new Socket(link.router2.processIPAddress,link.router2.processPortNumber);
-
-        new Thread(new ServerHandler(clientSocket, link)).start();
-
-      } catch (IOException e) {
-        System.out.println(e);
-      }
-    }
-  }
-
-  /**
-   * attach the link to the remote router, which is identified by the given simulated ip;
-   * to establish the connection via socket, you need to indentify the process IP and process Port;
-   * additionally, weight is the cost to transmitting data through the link
-   * <p/>
-   * This command does trigger the link database synchronization
-   */
-  private void processConnect(String processIP, short processPort,
-                              String simulatedIP, short weight) {
-
-  }
-
-  /**
-   * output the neighbors of the routers
-   */
-  private void processNeighbors() {
-    System.out.println("Neighbors of " + this.rd.simulatedIPAddress + ":");
-
-    for (Link link : this.ports) {
-      if (link != null) {
-        System.out.println(link.router2.simulatedIPAddress);
-      }
-    }
-  }
-
-  /**
-   * disconnect with all neighbors and quit the program
-   */
-  private void processQuit() {
-
-  }
-
-  public void terminal() {
-    try {
-      InputStreamReader isReader = new InputStreamReader(System.in);
-      BufferedReader br = new BufferedReader(isReader);
-      System.out.print(">> ");
-      String command = br.readLine();
-      while (true) {
-        if (command.startsWith("detect ")) {
-          String[] cmdLine = command.split(" ");
-          processDetect(cmdLine[1]);
-        } else if (command.startsWith("disconnect ")) {
-          String[] cmdLine = command.split(" ");
-          processDisconnect(Short.parseShort(cmdLine[1]));
-        } else if (command.startsWith("quit")) {
-          processQuit();
-        } else if (command.startsWith("attach ")) {
-          String[] cmdLine = command.split(" ");
-          processAttach(cmdLine[1], Short.parseShort(cmdLine[2]),
-                  cmdLine[3], Short.parseShort(cmdLine[4]));
-        } else if (command.equals("start")) {
-          processStart();
-        } else if (command.equals("connect ")) {
-          String[] cmdLine = command.split(" ");
-          processConnect(cmdLine[1], Short.parseShort(cmdLine[2]),
-                  cmdLine[3], Short.parseShort(cmdLine[4]));
-        } else if (command.equals("neighbors")) {
-          //output neighbors
-          processNeighbors();
-        } else {
-          //invalid command
-          break;
+        // Check for an available port
+        short portIndex = -1;
+        for (short i = 0; i < 4; i++)
+        {
+            if (ports[i] == null) {
+                portIndex = i;
+            } else if (ports[i].router2.simulatedIPAddress.equals(simulatedIP)) {
+                alreadyAttached = true;
+            }
         }
-        System.out.println(">> ");
-        command = br.readLine();
-      }
-      isReader.close();
-      br.close();
-    } catch (Exception e) {
-      e.printStackTrace();
+
+        if (alreadyAttached) {
+            System.out.println("Already attached.");
+            return;
+        }
+        if (portIndex == -1) {
+            System.out.println("No more ports available.");
+            return;
+        }
+
+        // Create router description for remote router
+        RouterDescription remote = new RouterDescription();
+        remote.processIPAddress = processIP;
+        remote.processPortNumber = processPort;
+        remote.simulatedIPAddress = simulatedIP;
+        remote.status = RouterStatus.INIT;
+
+        // Add new link between current router/remote router with weight
+        ports[portIndex] = new Link(rd, remote, weight);
     }
-  }
+
+    /**
+     * broadcast Hello to neighbors
+     */
+    private void processStart() {
+        for (Link link: ports) {
+            if (link == null) continue;
+
+            Socket clientSocket;
+            try {
+                clientSocket = new Socket(link.router2.processIPAddress,link.router2.processPortNumber);
+
+                new Thread(new ServerHandler(clientSocket, link, this)).start();
+
+            } catch (IOException e) {
+                System.out.println(e);
+            }
+        }
+    }
+
+    /**
+     * attach the link to the remote router, which is identified by the given simulated ip;
+     * to establish the connection via socket, you need to indentify the process IP and process Port;
+     * additionally, weight is the cost to transmitting data through the link
+     * <p/>
+     * This command does trigger the link database synchronization
+     */
+    private void processConnect(String processIP, short processPort,
+                                String simulatedIP, short weight) {
+
+    }
+
+    /**
+     * output the neighbors of the routers
+     */
+    private void processNeighbors() {
+        System.out.println("Neighbors of " + this.rd.simulatedIPAddress + ":");
+
+        for (Link link : this.ports) {
+            if (link != null) {
+                System.out.println(link.router2.simulatedIPAddress);
+            }
+        }
+    }
+
+    /**
+     * disconnect with all neighbors and quit the program
+     */
+    private void processQuit() {
+
+    }
+
+    public void sendUpdate() {
+        this.doSendUpdate = true;
+    }
+
+    public void terminal() {
+        try {
+            InputStreamReader isReader = new InputStreamReader(System.in);
+            BufferedReader br = new BufferedReader(isReader);
+            System.out.print(">> ");
+            String command = br.readLine();
+            while (true) {
+                if (command.startsWith("detect ")) {
+                    String[] cmdLine = command.split(" ");
+                    processDetect(cmdLine[1]);
+                } else if (command.startsWith("disconnect ")) {
+                    String[] cmdLine = command.split(" ");
+                    processDisconnect(Short.parseShort(cmdLine[1]));
+                } else if (command.startsWith("quit")) {
+                    processQuit();
+                } else if (command.startsWith("attach ")) {
+                    String[] cmdLine = command.split(" ");
+                    processAttach(cmdLine[1], Short.parseShort(cmdLine[2]),
+                            cmdLine[3], Short.parseShort(cmdLine[4]));
+                } else if (command.equals("start")) {
+                    processStart();
+                } else if (command.equals("connect ")) {
+                    String[] cmdLine = command.split(" ");
+                    processConnect(cmdLine[1], Short.parseShort(cmdLine[2]),
+                            cmdLine[3], Short.parseShort(cmdLine[4]));
+                } else if (command.equals("neighbors")) {
+                    //output neighbors
+                    processNeighbors();
+                } else {
+                    //invalid command
+                    break;
+                }
+                System.out.println(">> ");
+                command = br.readLine();
+            }
+            isReader.close();
+            br.close();
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+    }
 
 }

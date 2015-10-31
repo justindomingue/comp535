@@ -13,10 +13,12 @@ import java.net.Socket;
 public class ServerHandler implements Runnable {
     private Socket clientSocket;
     private Link link;
+    private Router main;
 
-    public ServerHandler(Socket clientSocket, Link link) {
+    public ServerHandler(Socket clientSocket, Link link, Router main) {
         this.clientSocket = clientSocket;
         this.link = link;
+        this.main = main;
     }
 
     public void run() {
@@ -54,6 +56,11 @@ public class ServerHandler implements Runnable {
 
                     // Answer with HELLO
                     output.writeObject(answerPacket);
+
+                    main.sendUpdate();
+
+                } else if (responsePacket.sospfType == 1) {
+                    System.out.println("Received update.");
                 }
             }
         } catch (IOException e) {

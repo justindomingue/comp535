@@ -28,7 +28,8 @@ public class ClientHandler implements Runnable {
             RouterDescription rd = link.router1;
 
             SOSPFPacket responsePacket;
-            while (true) {
+            boolean handshakeDone = true;
+            while (!handshakeDone) {
                 responsePacket = (SOSPFPacket)input.readObject();
 
                 if (responsePacket.sospfType == 0) {
@@ -61,6 +62,30 @@ public class ClientHandler implements Runnable {
 
                     System.out.println("received HELLO from " + link.router2.simulatedIPAddress + ";");
                     System.out.println("set " + link.router2.simulatedIPAddress + " state to " + link.router2.status + ";");
+
+                    // Break out of loop
+                    handshakeDone = true;
+                }
+            }
+
+            // From now on, just broadcast LSAUPDATE
+            while (true) {
+                if (Router.doSendUpdate) {
+                    System.out.println("Sending update");
+
+                    SOSPFPacket answerPacket = new SOSPFPacket();
+                    answerPacket.srcIP = rd.simulatedIPAddress;
+                    answerPacket.srcProcessIP = rd.processIPAddress;
+                    answerPacket.srcProcessPort = rd.processPortNumber;
+                    answerPacket.dstIP = serviceSocket.getRemoteSocketAddress().toString();
+                    answerPacket.sospfType = 1;
+                    answerPacket.routerID = rd.simulatedIPAddress;
+                    answerPacket.neighborID = rd.simulatedIPAddress;
+                    //TODO answerPacket.lsaArray = null;
+
+                    output.writeObject(answerPacket);
+
+                    Router.doSendUpdate = false;
                 }
             }
         } catch (IOException e) {
