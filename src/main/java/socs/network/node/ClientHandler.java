@@ -14,10 +14,12 @@ public class ClientHandler implements Runnable {
 
     private Socket serviceSocket;
     private Link link;
+    private Router main;
 
-    public ClientHandler(Socket serviceSocket, Link link) {
+    public ClientHandler(Socket serviceSocket, Link link, Router main) {
         this.serviceSocket = serviceSocket;
         this.link = link;
+        this.main = main;
     }
 
     public void run() {
@@ -28,7 +30,7 @@ public class ClientHandler implements Runnable {
             RouterDescription rd = link.router1;
 
             SOSPFPacket responsePacket;
-            boolean handshakeDone = true;
+            boolean handshakeDone = false;
             while (!handshakeDone) {
                 responsePacket = (SOSPFPacket)input.readObject();
 
@@ -55,39 +57,24 @@ public class ClientHandler implements Runnable {
 
                         output.writeObject(answerPacket);
 
-                        // second hello
+                    // second hello
                     } else {
                         link.router2.status = RouterStatus.TWO_WAY;
+
+                        // Break out of loop
+                        handshakeDone = true;
+                        main.addToLSD(link);
                     }
 
                     System.out.println("received HELLO from " + link.router2.simulatedIPAddress + ";");
                     System.out.println("set " + link.router2.simulatedIPAddress + " state to " + link.router2.status + ";");
-
-                    // Break out of loop
-                    handshakeDone = true;
                 }
             }
 
-            // From now on, just broadcast LSAUPDATE
-            while (true) {
-                if (Router.doSendUpdate) {
-                    System.out.println("Sending update");
+            main.makeUpdateListener(serviceSocket);
 
-                    SOSPFPacket answerPacket = new SOSPFPacket();
-                    answerPacket.srcIP = rd.simulatedIPAddress;
-                    answerPacket.srcProcessIP = rd.processIPAddress;
-                    answerPacket.srcProcessPort = rd.processPortNumber;
-                    answerPacket.dstIP = serviceSocket.getRemoteSocketAddress().toString();
-                    answerPacket.sospfType = 1;
-                    answerPacket.routerID = rd.simulatedIPAddress;
-                    answerPacket.neighborID = rd.simulatedIPAddress;
-                    //TODO answerPacket.lsaArray = null;
+            return;
 
-                    output.writeObject(answerPacket);
-
-                    Router.doSendUpdate = false;
-                }
-            }
         } catch (IOException e) {
             System.out.println(e);
         } catch (ClassNotFoundException e) {

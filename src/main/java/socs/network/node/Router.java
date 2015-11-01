@@ -1,12 +1,16 @@
 package socs.network.node;
 
+import socs.network.message.LSA;
 import socs.network.message.SOSPFPacket;
 import socs.network.util.Configuration;
 
 import java.io.*;
 import java.net.ServerSocket;
 import java.net.Socket;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Random;
+import java.util.Vector;
 
 
 public class Router {
@@ -17,6 +21,7 @@ public class Router {
 
     //assuming that all routers are with 4 ports
     static Link[] ports = new Link[4];
+    private List<Socket> sockets = new ArrayList<Socket>();
 
     // Client will set to true when it receives an LSAUPDATE
     // Server monitors this variable and broadcasts the update when it changes to true
@@ -43,6 +48,8 @@ public class Router {
 
             rd.processIPAddress = server.getLocalSocketAddress().toString();
             rd.processPortNumber = (short)server.getLocalPort();
+
+            final Router main = this;
 
             new Thread(new Runnable() {
                 public void run() {
@@ -71,7 +78,7 @@ public class Router {
                             Router.ports[portIndex] = new Link(rd, null, (short)1);
 
                             // span thread
-                            new Thread(new ClientHandler(serviceSocket, Router.ports[portIndex])).start();
+                            new Thread(new ClientHandler(serviceSocket, Router.ports[portIndex], main)).start();
                         }
                     } catch (IOException e) {
                         System.out.println(e);
@@ -121,7 +128,7 @@ public class Router {
         {
             if (ports[i] == null) {
                 portIndex = i;
-            } else if (ports[i].router2.simulatedIPAddress.equals(simulatedIP)) {
+            } else if (ports[i].router2 != null && ports[i].router2.simulatedIPAddress.equals(simulatedIP)) {
                 alreadyAttached = true;
             }
         }
@@ -197,8 +204,104 @@ public class Router {
 
     }
 
-    public void sendUpdate() {
-        this.doSendUpdate = true;
+    /**
+     * called once handshake for `socket` connection is done.
+     * will create two threads:
+     *      1) listens for LSA Update
+     *      2) writes LSA Update
+     * @param socket
+     */
+    public void makeUpdateListener(final Socket socket) {
+        Runnable listener = new Runnable() {
+            public void run() {
+                System.out.println("Listening");
+                try {
+                    Socket clientSocket = socket;
+                    ObjectInputStream input = new ObjectInputStream(clientSocket.getInputStream());
+
+                    SOSPFPacket responsePacket;
+                    while (true) {
+                        responsePacket = (SOSPFPacket) input.readObject();
+                        System.out.println("Listener received an update.");
+
+                        boolean dbChanged = decodeLSA(responsePacket.lsaArray);
+                        if (dbChanged) {
+                            System.out.println("DB has changed.");
+                        }
+                        sendUpdate(socket); // send update to all but this socket
+                    }
+
+                } catch (IOException e) { System.out.println(e);
+                } catch (ClassNotFoundException e) { System.out.println(e);
+                }
+            }
+        };
+
+        (new Thread(listener)).start();
+
+        sockets.add(socket);
+    }
+
+    public void sendUpdate(Socket from) {
+
+        SOSPFPacket answerPacket = new SOSPFPacket();
+        answerPacket.srcIP = rd.simulatedIPAddress;
+        answerPacket.srcProcessIP = rd.processIPAddress;
+        answerPacket.srcProcessPort = rd.processPortNumber;
+        answerPacket.sospfType = 1;
+        answerPacket.routerID = rd.simulatedIPAddress;
+        answerPacket.neighborID = rd.simulatedIPAddress;
+        answerPacket.lsaArray = encodeLSA();
+
+        for (Socket socket : sockets) {
+            if (socket == from) continue;
+
+            System.out.println("Sending update");
+
+            try {
+                ObjectOutputStream output = new ObjectOutputStream(socket.getOutputStream());
+
+                answerPacket.dstIP = socket.getRemoteSocketAddress().toString();
+
+                output.writeObject(answerPacket);
+            } catch (IOException e) {
+                System.out.println(e);
+            }
+        }
+    }
+
+    public void addToLSD(Link link) {
+//        LSA old = lsd._store.get(rd.simulatedIPAddress);
+//
+//        if (old == null) {
+//            LSA lsa = new LSA();
+//        }
+//        lsa.linkStateID = rd.simulatedIPAddress;
+//        lsa.lsaSeqNumber = Integer.MIN_VALUE;
+//        lsd._store.put(rd.simulatedIPAddress, lsa);
+    }
+    private  boolean decodeLSA(Vector<LSA> lsas) {
+        boolean dbUpdated = false;
+
+        for (LSA lsa : lsas) {
+            LSA old = lsd._store.get(lsa.linkStateID);
+            if (old == null || old.lsaSeqNumber < lsa.lsaSeqNumber) {
+                lsd._store.put(lsa.linkStateID, lsa);
+                dbUpdated = true;
+            }
+        }
+
+        return dbUpdated;
+    }
+
+    private Vector<LSA> encodeLSA() {
+        Vector<LSA> v = new Vector<LSA>();
+
+        for (LSA lsa : this.lsd._store.values()) {
+            v.add(lsa);
+        }
+
+        return v;
     }
 
     public void terminal() {

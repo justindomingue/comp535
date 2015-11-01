@@ -57,7 +57,10 @@ public class ServerHandler implements Runnable {
                     // Answer with HELLO
                     output.writeObject(answerPacket);
 
-                    main.sendUpdate();
+                    main.makeUpdateListener(clientSocket);
+                    main.sendUpdate(clientSocket);
+
+                    return;
 
                 } else if (responsePacket.sospfType == 1) {
                     System.out.println("Received update.");
