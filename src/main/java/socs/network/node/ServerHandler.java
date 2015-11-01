@@ -57,6 +57,7 @@ public class ServerHandler implements Runnable {
                     // Answer with HELLO
                     output.writeObject(answerPacket);
 
+                    main.addToLSD(link);
                     main.makeUpdateListener(clientSocket);
                     main.sendUpdate(clientSocket);
 

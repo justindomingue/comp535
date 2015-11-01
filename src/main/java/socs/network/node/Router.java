@@ -1,6 +1,7 @@
 package socs.network.node;
 
 import socs.network.message.LSA;
+import socs.network.message.LinkDescription;
 import socs.network.message.SOSPFPacket;
 import socs.network.util.Configuration;
 
@@ -257,12 +258,10 @@ public class Router {
             if (socket == from) continue;
 
             System.out.println("Sending update");
+            answerPacket.dstIP = socket.getRemoteSocketAddress().toString();
 
             try {
                 ObjectOutputStream output = new ObjectOutputStream(socket.getOutputStream());
-
-                answerPacket.dstIP = socket.getRemoteSocketAddress().toString();
-
                 output.writeObject(answerPacket);
             } catch (IOException e) {
                 System.out.println(e);
@@ -271,15 +270,16 @@ public class Router {
     }
 
     public void addToLSD(Link link) {
-//        LSA old = lsd._store.get(rd.simulatedIPAddress);
-//
-//        if (old == null) {
-//            LSA lsa = new LSA();
-//        }
-//        lsa.linkStateID = rd.simulatedIPAddress;
-//        lsa.lsaSeqNumber = Integer.MIN_VALUE;
-//        lsd._store.put(rd.simulatedIPAddress, lsa);
+        LinkDescription ld = new LinkDescription();
+        ld.linkID = link.router2.simulatedIPAddress;
+        ld.portNum = link.router2.processPortNumber;
+        ld.tosMetrics = link.weight;
+
+        LSA lsa = lsd._store.get(link.router1.simulatedIPAddress);
+        lsa.lsaSeqNumber += 1;
+        lsa.links.add(ld);
     }
+
     private  boolean decodeLSA(Vector<LSA> lsas) {
         boolean dbUpdated = false;
 
