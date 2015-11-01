@@ -59,7 +59,7 @@ public class ServerHandler implements Runnable {
 
                     main.addToLSD(link);
                     main.makeUpdateListener(clientSocket);
-                    main.sendUpdate(clientSocket);
+                    main.sendUpdate(null);  // null so that the server gets an LSA UPDATE
 
                     return;
 

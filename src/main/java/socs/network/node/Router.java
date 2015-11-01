@@ -22,6 +22,8 @@ public class Router {
 
     //assuming that all routers are with 4 ports
     static Link[] ports = new Link[4];
+    private List<Short> clientPorts = new ArrayList<Short>();
+
     private List<Socket> sockets = new ArrayList<Socket>();
 
     // Client will set to true when it receives an LSAUPDATE
@@ -46,6 +48,7 @@ public class Router {
             // open a server socket
             server = new ServerSocket(n);
             System.out.println("Real IP " + server.getLocalSocketAddress() + " real port: " + server.getLocalPort());
+            System.out.println("attach 0.0.0.0 " + server.getLocalPort() + " " + rd.simulatedIPAddress + " 2");
 
             rd.processIPAddress = server.getLocalSocketAddress().toString();
             rd.processPortNumber = (short)server.getLocalPort();
@@ -99,7 +102,7 @@ public class Router {
      * @param destinationIP the ip adderss of the destination simulated router
      */
     private void processDetect(String destinationIP) {
-
+        System.out.println(lsd.getShortestPath(destinationIP));
     }
 
     /**
@@ -152,13 +155,16 @@ public class Router {
 
         // Add new link between current router/remote router with weight
         ports[portIndex] = new Link(rd, remote, weight);
+        clientPorts.add(portIndex);
     }
 
     /**
      * broadcast Hello to neighbors
      */
     private void processStart() {
-        for (Link link: ports) {
+        for (Short index : clientPorts) {
+            Link link = Router.ports[index];
+
             if (link == null) continue;
 
             Socket clientSocket;
@@ -212,10 +218,9 @@ public class Router {
      *      2) writes LSA Update
      * @param socket
      */
-    public void makeUpdateListener(final Socket socket) {
+    public synchronized void makeUpdateListener(final Socket socket) {
         Runnable listener = new Runnable() {
             public void run() {
-                System.out.println("Listening");
                 try {
                     Socket clientSocket = socket;
                     ObjectInputStream input = new ObjectInputStream(clientSocket.getInputStream());
@@ -228,6 +233,7 @@ public class Router {
                         boolean dbChanged = decodeLSA(responsePacket.lsaArray);
                         if (dbChanged) {
                             System.out.println("DB has changed.");
+                            System.out.println(lsd);
                         }
                         sendUpdate(socket); // send update to all but this socket
                     }
@@ -243,7 +249,7 @@ public class Router {
         sockets.add(socket);
     }
 
-    public void sendUpdate(Socket from) {
+    public synchronized void sendUpdate(Socket from) {
 
         SOSPFPacket answerPacket = new SOSPFPacket();
         answerPacket.srcIP = rd.simulatedIPAddress;
@@ -257,11 +263,11 @@ public class Router {
         for (Socket socket : sockets) {
             if (socket == from) continue;
 
-            System.out.println("Sending update");
             answerPacket.dstIP = socket.getRemoteSocketAddress().toString();
 
             try {
                 ObjectOutputStream output = new ObjectOutputStream(socket.getOutputStream());
+                output.flush();
                 output.writeObject(answerPacket);
             } catch (IOException e) {
                 System.out.println(e);
@@ -269,7 +275,7 @@ public class Router {
         }
     }
 
-    public void addToLSD(Link link) {
+    public synchronized void addToLSD(Link link) {
         LinkDescription ld = new LinkDescription();
         ld.linkID = link.router2.simulatedIPAddress;
         ld.portNum = link.router2.processPortNumber;
@@ -280,8 +286,10 @@ public class Router {
         lsa.links.add(ld);
     }
 
-    private  boolean decodeLSA(Vector<LSA> lsas) {
+    private synchronized boolean decodeLSA(Vector<LSA> lsas) {
         boolean dbUpdated = false;
+
+        System.out.println("Decoding " + lsas.size());
 
         for (LSA lsa : lsas) {
             LSA old = lsd._store.get(lsa.linkStateID);

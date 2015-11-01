@@ -63,7 +63,6 @@ public class ClientHandler implements Runnable {
 
                         // Break out of loop
                         handshakeDone = true;
-                        main.addToLSD(link);
                     }
 
                     System.out.println("received HELLO from " + link.router2.simulatedIPAddress + ";");
@@ -71,6 +70,7 @@ public class ClientHandler implements Runnable {
                 }
             }
 
+            main.addToLSD(link);
             main.makeUpdateListener(serviceSocket);
 
             return;
