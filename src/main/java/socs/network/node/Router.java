@@ -228,18 +228,17 @@ public class Router {
                     SOSPFPacket responsePacket;
                     while (true) {
                         responsePacket = (SOSPFPacket) input.readObject();
-                        System.out.println("Listener received an update.");
 
                         boolean dbChanged = decodeLSA(responsePacket.lsaArray);
                         if (dbChanged) {
                             System.out.println("DB has changed.");
                             System.out.println(lsd);
+                            sendUpdate(socket); // send update to all but this socket
                         }
-                        sendUpdate(socket); // send update to all but this socket
                     }
 
-                } catch (IOException e) { System.out.println(e);
-                } catch (ClassNotFoundException e) { System.out.println(e);
+                } catch (IOException e) { e.printStackTrace();
+                } catch (ClassNotFoundException e) { e.printStackTrace();
                 }
             }
         };
@@ -250,27 +249,25 @@ public class Router {
     }
 
     public synchronized void sendUpdate(Socket from) {
-
-        SOSPFPacket answerPacket = new SOSPFPacket();
-        answerPacket.srcIP = rd.simulatedIPAddress;
-        answerPacket.srcProcessIP = rd.processIPAddress;
-        answerPacket.srcProcessPort = rd.processPortNumber;
-        answerPacket.sospfType = 1;
-        answerPacket.routerID = rd.simulatedIPAddress;
-        answerPacket.neighborID = rd.simulatedIPAddress;
-        answerPacket.lsaArray = encodeLSA();
-
         for (Socket socket : sockets) {
             if (socket == from) continue;
 
+            SOSPFPacket answerPacket = new SOSPFPacket();
+            answerPacket.srcIP = rd.simulatedIPAddress;
+            answerPacket.srcProcessIP = rd.processIPAddress;
+            answerPacket.srcProcessPort = rd.processPortNumber;
+            answerPacket.sospfType = 1;
+            answerPacket.routerID = rd.simulatedIPAddress;
+            answerPacket.neighborID = rd.simulatedIPAddress;
+            answerPacket.lsaArray = encodeLSA();
             answerPacket.dstIP = socket.getRemoteSocketAddress().toString();
 
             try {
                 ObjectOutputStream output = new ObjectOutputStream(socket.getOutputStream());
-                output.flush();
+//                output.flush();
                 output.writeObject(answerPacket);
             } catch (IOException e) {
-                System.out.println(e);
+                e.printStackTrace();
             }
         }
     }
@@ -288,8 +285,6 @@ public class Router {
 
     private synchronized boolean decodeLSA(Vector<LSA> lsas) {
         boolean dbUpdated = false;
-
-        System.out.println("Decoding " + lsas.size());
 
         for (LSA lsa : lsas) {
             LSA old = lsd._store.get(lsa.linkStateID);
